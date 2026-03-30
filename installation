@@ -1,1 +1,9 @@
 
+launch a ubuntu ec2 instance
+connect to ubuntu instance using ssh
+sudo apt update
+sudo apt install docker.io
+docker images
+docker ps
+docker pull <repository:tag>
+docker run -d -p 9000:9000 --name sonarqube repository:tag
