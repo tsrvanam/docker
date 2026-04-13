@@ -1,0 +1,91 @@
+# 🐳 Docker Networking & Container Commands Cheat Sheet
+
+A complete guide to Docker basics, container management, and networking (bridge + custom networks).
+
+--------------------------------------------------
+
+📦 1. Install Docker (Ubuntu)
+
+sudo apt update
+sudo apt install docker.io -y
+sudo usermod -aG docker $USER
+
+(Log out & log back in after adding user to docker group)
+
+--------------------------------------------------
+
+🔍 2. Verify Installation
+
+docker --version
+docker ps
+docker images
+
+--------------------------------------------------
+
+📥 3. Pull Image
+
+docker pull tsravanam/simple-app:latest
+
+--------------------------------------------------
+
+🚀 4. Run Container (Default Bridge Network)
+
+docker run -d -p 8080:8080 --name cont1 tsravanam/simple-app:latest
+
+--------------------------------------------------
+
+📋 5. List Containers
+
+docker ps        # Running containers
+docker ps -a     # All containers
+
+--------------------------------------------------
+
+🖥️ 6. Enter Container
+
+docker exec -it cont1 bash
+OR
+docker exec -it cont1 sh
+
+--------------------------------------------------
+
+🌐 7. Install ping inside container (Ubuntu/Debian)
+
+apt update
+apt install -y iputils-ping
+
+--------------------------------------------------
+
+🔌 8. List Networks
+
+docker network ls
+
+--------------------------------------------------
+
+🧱 9. Create Custom Network
+
+docker network create airtelnetwork
+
+--------------------------------------------------
+
+🚀 10. Run Container in Custom Network
+
+docker run -d -p 8082:8080 --name cont3 --network airtelnetwork tsravanam/simple-app:latest
+
+--------------------------------------------------
+
+🔍 11. Inspect Network
+
+docker network inspect airtelnetwork
+
+--------------------------------------------------
+
+🔗 12. Connect Existing Container to Custom Network
+
+docker network connect airtelnetwork cont1
+
+--------------------------------------------------
+
+❌ 13. Disconnect Container from Custom Network
+
+docker network disconnect airtelnetwork cont1
