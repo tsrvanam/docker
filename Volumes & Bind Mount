@@ -1,0 +1,485 @@
+
+# Docker Notes: Containers, Networks, Bind Mounts, and Volumes
+
+# 1. Installing Docker on Ubuntu
+
+```bash
+sudo apt update
+sudo apt install docker.io
+sudo usermod -aG docker ubuntu
+exit
+```
+
+## Important notes
+
+After adding the user to the Docker group, logging out and logging back in is usually required so the group membership takes effect.
+
+Without adding the user to the Docker group, Docker commands usually need `sudo`.
+
+---
+
+# 2. Cloning the Application Project
+
+## Commands used
+
+```bash
+git --version
+git clone https://github.com/kkdevopsb8/spring-boot-mongo-docker-kkfunda.git
+cd spring-boot-mongo-docker-kkfunda/
+ls
+cat Dockerfile
+```
+
+# 3. Building a Docker Image
+
+## Command used
+
+```bash
+docker build -t springboot:1.0 .
+```
+
+# 4. Listing Containers
+
+## Commands used
+
+```bash
+docker ps
+docker ps -a
+```
+# 5. Creating a Custom Docker Network
+
+## Command used
+
+```bash
+docker network create jionetwork
+```
+
+## Explanation
+
+This creates a custom bridge network named `jionetwork`.
+
+## Why this was needed
+
+The application container was first started before the network existed, so it could not use it. After creating the network, containers could be attached to it.
+
+## Important concept
+
+Containers on the same custom network can:
+- talk to each other
+- use container names as hostnames
+- stay logically grouped together
+
+This is very important in multi-container applications.
+
+# 6. Running the Spring Boot Application Container
+
+## Command used
+
+```bash
+docker run -d -p 8080:8080 --name springapp --network jionetwork -e MONGO_DB_HOSTNAME=mongo -e MONGO_DB_USERNAME=devdb -e MONGO_DB_PASSWORD=dev@123 springboot:1.0
+```
+
+## Important concept: how the application knows where MongoDB is
+
+The application does **not automatically detect MongoDB**. It knows where to connect because of:
+
+```bash
+-e MONGO_DB_HOSTNAME=mongo
+```
+
+The hostname is set to `mongo`, which is the name of the MongoDB container.  
+Because both containers are on the same Docker network, Docker provides internal DNS resolution. That means the name `mongo` resolves to the MongoDB container's internal IP.
+
+So the connection works because of **both**:
+1. same custom network
+2. correct hostname passed to the app
+
+---
+
+# 7. Running MongoDB in Docker
+
+## Basic command used
+
+```bash
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 mongo:8.0.9-noble
+```
+
+## Important concept
+
+This MongoDB container stores data **inside the container** unless a mount is used.  
+If the container is deleted, the data can be lost unless persisted with a bind mount or volume.
+
+---
+
+# 9. Practicing with a Bind Mount
+
+## Folder creation commands
+
+```bash
+mkdir backup
+cd backup/
+pwd
+
+## MongoDB bind mount command used
+
+```bash
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 -v /home/ubuntu/backup:/data/db mongo:8.0.9-noble
+```
+
+MongoDB writes its database files into `/data/db` inside the container.  
+Because of the bind mount, Docker maps that to the host folder `/home/ubuntu/backup`.
+
+## Important concept: how bind mounts work
+
+A bind mount directly connects a folder on the host machine to a folder inside the container.
+
+That means:
+
+- files written to `/data/db` inside the container are actually stored in `/home/ubuntu/backup` on the host
+- the container and host are looking at the same data
+- Docker is not copying files back and forth
+- it is not a backup process
+- it is a live mapping
+
+## Very important clarification
+
+It does **not** work like this:
+
+1. Mongo writes to its own internal folder
+2. Docker copies that data to the host
+
+It works like this instead:
+
+- `/data/db` is effectively backed by the host folder directly
+
+So writing inside the container is writing directly to the mounted host location.
+
+## Why bind mounts can fail
+
+Bind mounts can cause problems because:
+- the host folder may not exist
+- permissions may be wrong
+- MongoDB may not be able to write to that folder
+
+This is one reason named volumes are often easier and safer.
+
+---
+
+# 10. Deleting a Directory in Ubuntu
+
+sudo rm -rf backup/
+```
+---
+
+# 11. Creating and Using a Docker Volume
+
+## Commands used
+
+```bash
+docker volume create mongo-data
+docker volume ls
+```
+
+## Important concept
+
+A **Docker volume** is storage managed by Docker.
+
+Unlike a bind mount, with a volume:
+- Docker decides where it is stored on the host
+- Docker handles much of the management
+- permissions issues are less common
+- it is generally better for persistent database storage
+
+---
+
+# 12. Running MongoDB with a Docker Volume
+
+## Command used
+
+```bash
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 -v mongo-data:/data/db mongo:8.0.9-noble
+```
+
+## Breakdown
+
+### `-v mongo-data:/data/db`
+This mounts the named volume `mongo-data` into `/data/db` inside the container.
+
+Format:
+```bash
+-v <volume_name>:<container_path>
+```
+
+So here:
+
+- Docker volume name: `mongo-data`
+- container path: `/data/db`
+
+MongoDB will store its data in the volume instead of only inside the container.
+
+## Important concept
+
+If the container is deleted, the volume still exists.  
+That means the database data can survive container removal and recreation.
+
+This is one of the main reasons volumes are widely used with databases.
+
+---
+
+# 14. Bind Mount vs Volume
+
+## Bind Mount
+
+### Example
+```bash
+-v /home/ubuntu/backup:/data/db
+```
+
+### Characteristics
+- uses a host path chosen by the user
+- directly maps that folder into the container
+- useful for development and debugging
+- easy to inspect files manually
+- more likely to have permission issues
+- strongly tied to host folder structure
+
+## Volume
+
+### Example
+```bash
+-v mongo-data:/data/db
+```
+
+### Characteristics
+- managed by Docker
+- storage path is controlled by Docker
+- easier for persistent application data
+- fewer permission problems
+- preferred for production-style setups
+- better suited for databases like MongoDB
+
+## Simple rule of thumb
+
+Use a **bind mount** when:
+- you want to see or edit files directly on the host
+- you are doing local development
+- you need to map a specific host folder
+
+Use a **volume** when:
+- you want persistent data storage
+- you are storing database files
+- you want Docker to manage the storage
+- you want fewer permission problems
+
+---
+
+# 15. Why the MongoDB Data Was Better with a Volume
+
+During practice, the MongoDB container worked without a mount, but bind mounting to the host folder caused issues.
+
+This happens often because MongoDB expects proper write permissions to its data directory.  
+A host folder used in a bind mount may not provide the correct permissions or ownership.
+
+A Docker volume usually avoids this problem because Docker manages the storage area in a way that is more compatible with containerized applications.
+
+So for MongoDB, a volume is usually the safer and cleaner choice.
+
+---
+
+# 17. Full Practice Flow Summary
+
+Below is the logical flow of the entire exercise.
+
+## Step 1: Install Docker
+```bash
+sudo apt update
+sudo apt install docker.io
+sudo usermod -aG docker ubuntu
+```
+
+## Step 2: Clone project
+```bash
+git clone https://github.com/kkdevopsb8/spring-boot-mongo-docker-kkfunda.git
+cd spring-boot-mongo-docker-kkfunda/
+```
+
+## Step 3: Check Dockerfile
+```bash
+cat Dockerfile
+```
+
+## Step 4: Build application image
+```bash
+docker build -t springboot:1.0 .
+```
+
+## Step 5: Create custom network
+```bash
+docker network create jionetwork
+```
+
+## Step 6: Run MongoDB container
+```bash
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 mongo:8.0.9-noble
+```
+
+## Step 7: Run Spring Boot app container
+```bash
+docker run -d -p 8080:8080 --name springapp --network jionetwork -e MONGO_DB_HOSTNAME=mongo -e MONGO_DB_USERNAME=devdb -e MONGO_DB_PASSWORD=dev@123 springboot:1.0
+```
+
+## Step 8: Check running containers
+```bash
+docker ps
+docker ps -a
+```
+
+## Step 9: Practice bind mount with MongoDB
+```bash
+mkdir backup
+docker rm -f mongo
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 -v /home/ubuntu/backup:/data/db mongo:8.0.9-noble
+```
+
+## Step 10: Remove test directory
+```bash
+rm -rf backup/
+```
+
+## Step 11: Create Docker volume
+```bash
+docker volume create mongo-data
+docker volume ls
+```
+
+## Step 12: Run MongoDB using volume
+```bash
+docker rm -f mongo
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 -v mongo-data:/data/db mongo:8.0.9-noble
+```
+
+---
+
+# 18. Common Commands Reference
+
+## Build image
+```bash
+docker build -t springboot:1.0 .
+```
+
+## List images
+```bash
+docker image ls
+```
+
+## List running containers
+```bash
+docker ps
+```
+
+## List all containers
+```bash
+docker ps -a
+```
+
+## Remove container forcefully
+```bash
+docker rm -f <container_name_or_id>
+```
+
+## Create network
+```bash
+docker network create jionetwork
+```
+
+## Run application container
+```bash
+docker run -d -p 8080:8080 --name springapp --network jionetwork -e MONGO_DB_HOSTNAME=mongo -e MONGO_DB_USERNAME=devdb -e MONGO_DB_PASSWORD=dev@123 springboot:1.0
+```
+
+## Run MongoDB container without persistence
+```bash
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 mongo:8.0.9-noble
+```
+
+## Run MongoDB with bind mount
+```bash
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 -v /home/ubuntu/backup:/data/db mongo:8.0.9-noble
+```
+
+## Run MongoDB with volume
+```bash
+docker run -d --name mongo --network jionetwork -e MONGO_INITDB_ROOT_USERNAME=devdb -e MONGO_INITDB_ROOT_PASSWORD=dev@123 -v mongo-data:/data/db mongo:8.0.9-noble
+```
+
+## Create volume
+```bash
+docker volume create mongo-data
+```
+
+## List volumes
+```bash
+docker volume ls
+```
+
+## Remove unused volumes
+```bash
+docker volume prune
+```
+
+## Inspect volume
+```bash
+docker inspect mongo-data
+```
+
+---
+
+# 19. Key Interview and Practical Takeaways
+
+## 1. Image vs Container
+- Image is the template
+- Container is the running instance
+
+## 2. Custom networks matter
+Containers in the same custom network can communicate using container names.
+
+## 3. Environment variables drive configuration
+The Spring Boot application knew where MongoDB was because `MONGO_DB_HOSTNAME=mongo` was passed at runtime.
+
+## 4. Bind mounts and volumes both persist data, but differently
+- bind mount = host-controlled path
+- volume = Docker-controlled persistent storage
+
+## 5. Volumes are usually better for databases
+They are more reliable and less likely to cause permission problems.
+
+## 6. Container recreation is normal
+If mount settings, environment variables, or network settings need to change, containers are usually removed and recreated.
+
+---
+
+# 20. Final Conclusion
+
+This practice session covered the full learning path from:
+- installing Docker
+- building an image
+- running containers
+- creating networks
+- connecting application and database containers
+- using bind mounts
+- using Docker volumes
+- removing containers and directories
+- inspecting Docker resources
+
+The most important learning outcome is this:
+
+- **bind mounts** are useful when you want direct control over a host folder
+- **volumes** are usually the better choice for persistent database storage
+- **custom networks** allow containers to communicate cleanly using names instead of IP addresses
+- **environment variables** tell the application how to connect to services like MongoDB
+
+These are foundational Docker concepts and are essential for real-world containerized application deployment.
+
+---
+
+
